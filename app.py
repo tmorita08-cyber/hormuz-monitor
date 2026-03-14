@@ -8,67 +8,88 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# データベースの設定（スペル修正済み：URIが正解です）
+# データベース設定
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'news.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# データベースモデルの定義（ニュースを保存する箱）
+# データベースモデル
 class News(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(300), nullable=False)
     url = db.Column(db.String(500), nullable=False, unique=True)
-    category = db.Column(db.String(50), nullable=False)
+    category = db.Column(db.String(50), nullable=False) # 'main', 'market', 'tire', 'chemical'
     published_at = db.Column(db.DateTime, default=datetime.utcnow)
 
-# ニュースを取得して保存する関数
+# ニュース取得・自動分類ロジック
 def fetch_and_save_news():
     rss_urls = {
         'main': 'https://news.google.com/rss/search?q=Hormuz+Strait+oil+shipping&hl=en-US&gl=US&ceid=US:en',
         'market': 'https://news.google.com/rss/search?q=Naphtha+price+market&hl=en-US&gl=US&ceid=US:en'
     }
     
+    # 分類用キーワード設定
+    keywords = {
+        'tire': ['タイヤ', 'ブリヂストン', '横浜ゴム', '住友ゴム', 'ゴム', 'ホース', 'コンパウンド'],
+        'chemical': ['化学', 'プラント', 'エチレン', '三菱ケミカル', '三井化学', '旭化成', '石油化学']
+    }
+    
     translator = GoogleTranslator(source='en', target='ja')
     
     with app.app_context():
-        for category, url in rss_urls.items():
+        for base_cat, url in rss_urls.items():
             feed = feedparser.parse(url)
-            for entry in feed.entries[:5]:  # 各カテゴリ最新5件を取得
-                # 重複チェック（すでに保存されているURLならスキップ）
+            for entry in feed.entries[:5]:
                 if not News.query.filter_by(url=entry.link).first():
                     try:
                         translated_title = translator.translate(entry.title)
+                        
+                        # キーワードによる自動カテゴリ判定
+                        final_category = base_cat
+                        for cat_name, word_list in keywords.items():
+                            if any(word in translated_title for word in word_list):
+                                final_category = cat_name
+                                break
+                        
                         new_news = News(
                             title=translated_title,
                             url=entry.link,
-                            category=category
+                            category=final_category
                         )
                         db.session.add(new_news)
                     except Exception as e:
-                        print(f"Error translating/saving: {e}")
+                        print(f"Error: {e}")
         db.session.commit()
 
-# ★最重要修正ポイント★
-# Render（Gunicorn）環境でも確実に実行されるように、if __name__ == ... の外に出しました
+# 起動時に実行
 with app.app_context():
-    db.create_all()        # 起動時に必ずテーブルを作成
-    fetch_and_save_news()  # 起動時に必ず最初のニュースを取得
+    db.create_all()
+    fetch_and_save_news()
 
-# スケジューラーの設定（起動後、1時間ごとに自動更新）
+# 定期実行設定（1時間おき）
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=fetch_and_save_news, trigger="interval", hours=1)
 scheduler.start()
 
-# 画面を表示するルーティング
+# --- ルーティング ---
+
 @app.route('/')
 def index():
-    # データベースからニュースを取得してHTMLに渡す
-    main_news = News.query.filter_by(category='main').order_by(News.published_at.desc()).limit(10).all()
-    market_news = News.query.filter_by(category='market').order_by(News.published_at.desc()).limit(10).all()
-    return render_template('index.html', main_news=main_news, market_news=market_news)
+    # 全カテゴリから最新順に取得
+    all_news = News.query.order_by(News.published_at.desc()).limit(15).all()
+    return render_template('index.html', main_news=all_news)
 
-# ローカル（自分のPC）でテスト起動する時用の記述
+@app.route('/chemical')
+def chemical():
+    news = News.query.filter_by(category='chemical').order_by(News.published_at.desc()).all()
+    return render_template('index.html', main_news=news, title="化学メーカー関連")
+
+@app.route('/tire')
+def tire():
+    news = News.query.filter_by(category='tire').order_by(News.published_at.desc()).all()
+    return render_template('index.html', main_news=news, title="タイヤ・ホース関連")
+
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
