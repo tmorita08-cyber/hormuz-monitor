@@ -1,6 +1,0 @@
-Flask
-Flask-SQLAlchemy
-APScheduler
-feedparser
-deep-translator
-gunicorn
