@@ -8,13 +8,13 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-# データベースの設定（Renderの環境でも動作するように設定）
+# データベースの設定（スペル修正済み：URIが正解です）
 basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_DATA'] = 'sqlite:///' + os.path.join(basedir, 'news.db')
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'news.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
-# データベースモデルの定義
+# データベースモデルの定義（ニュースを保存する箱）
 class News(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     title = db.Column(db.String(300), nullable=False)
@@ -34,8 +34,8 @@ def fetch_and_save_news():
     with app.app_context():
         for category, url in rss_urls.items():
             feed = feedparser.parse(url)
-            for entry in feed.entries[:5]:  # 各カテゴリ最新5件
-                # 重複チェック
+            for entry in feed.entries[:5]:  # 各カテゴリ最新5件を取得
+                # 重複チェック（すでに保存されているURLならスキップ）
                 if not News.query.filter_by(url=entry.link).first():
                     try:
                         translated_title = translator.translate(entry.title)
@@ -49,24 +49,26 @@ def fetch_and_save_news():
                         print(f"Error translating/saving: {e}")
         db.session.commit()
 
-# スケジューラーの設定（1時間ごとに更新）
+# ★最重要修正ポイント★
+# Render（Gunicorn）環境でも確実に実行されるように、if __name__ == ... の外に出しました
+with app.app_context():
+    db.create_all()        # 起動時に必ずテーブルを作成
+    fetch_and_save_news()  # 起動時に必ず最初のニュースを取得
+
+# スケジューラーの設定（起動後、1時間ごとに自動更新）
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=fetch_and_save_news, trigger="interval", hours=1)
 scheduler.start()
 
+# 画面を表示するルーティング
 @app.route('/')
 def index():
-    # データベースからニュースを取得して表示
+    # データベースからニュースを取得してHTMLに渡す
     main_news = News.query.filter_by(category='main').order_by(News.published_at.desc()).limit(10).all()
     market_news = News.query.filter_by(category='market').order_by(News.published_at.desc()).limit(10).all()
     return render_template('index.html', main_news=main_news, market_news=market_news)
 
+# ローカル（自分のPC）でテスト起動する時用の記述
 if __name__ == '__main__':
-    # 起動時にデータベースとテーブルを作成し、最初のニュースを取得
-    with app.app_context():
-        db.create_all()
-        fetch_and_save_news()
-    
-    # Render等の本番環境用に host='0.0.0.0' を指定
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
