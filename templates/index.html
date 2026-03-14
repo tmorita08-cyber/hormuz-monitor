@@ -3,125 +3,87 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ホルムズ海峡 総合監視ダッシュボード</title>
+    <title>Hormuz Intelligence - 専門家によるエネルギー情勢まとめ</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #f8f9fa; font-family: "Hiragino Kaku Gothic ProN", Meiryo, sans-serif; color: #333; }
-        .navbar { background-color: #1a2a3a !important; border-bottom: 3px solid #dc3545; }
+        /* Climate Curation風：白基調で清潔感のあるスタイル */
+        body { background-color: #ffffff; font-family: "Georgia", "Hiragino Mincho ProN", serif; color: #1a1a1a; line-height: 1.8; }
+        .navbar { background-color: #ffffff !important; border-bottom: 1px solid #eaeaea; padding: 1.5rem 0; }
+        .navbar-brand { font-weight: 900; letter-spacing: -1px; color: #000 !important; font-size: 1.5rem; }
         
-        /* 全体レイアウト */
-        .main-row { height: calc(100vh - 80px); }
+        .hero-section { padding: 4rem 0; border-bottom: 1px solid #f0f0f0; margin-bottom: 3rem; }
+        .hero-title { font-weight: 800; font-size: 2.5rem; margin-bottom: 1rem; }
         
-        /* 左：ニュースエリア */
-        .news-section { height: 100%; overflow-y: auto; padding: 20px; }
-        .card { border: none; border-left: 5px solid #1a2a3a; border-radius: 8px; margin-bottom: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+        /* ニュースカード：囲み線を無くし、下線で区切る */
+        .news-card { border: none; border-bottom: 1px solid #f0f0f0; border-radius: 0; padding: 2rem 0; background: none; }
+        .news-category { font-size: 0.75rem; font-weight: bold; text-transform: uppercase; color: #dc3545; letter-spacing: 1px; }
+        .news-title { font-weight: 700; font-size: 1.4rem; margin: 0.5rem 0; color: #1a1a1a; text-decoration: none; }
+        .news-title:hover { color: #0056b3; }
         
-        /* 右：ツールエリア（スクロール可能に設定） */
-        .tool-section { height: 100%; overflow-y: auto; padding: 20px; background-color: #f1f3f5; border-left: 1px solid #dee2e6; }
-        .widget-box { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.08); margin-bottom: 20px; }
-        
-        .news-date { font-size: 0.75rem; color: #6c757d; font-weight: bold; }
-        .badge-live { animation: blink 1.5s infinite; font-size: 0.6rem; vertical-align: middle; }
-        @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0.3; } 100% { opacity: 1; } }
+        /* 動画エリア */
+        .video-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 12px; background: #000; margin-bottom: 2rem; }
+        .video-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+        .side-widget { background: #f9f9f9; border-radius: 8px; padding: 1.5rem; margin-bottom: 2rem; }
     </style>
 </head>
 <body>
 
-<nav class="navbar navbar-expand-lg navbar-dark shadow-sm">
-    <div class="container-fluid px-4">
-        <a class="navbar-brand fw-bold" href="/">⚓ HORMUZ INTELLIGENCE</a>
-        <div class="collapse navbar-collapse">
-            <ul class="navbar-nav me-auto">
-                <li class="nav-item"><a class="nav-link {% if current_route == 'index' %}active{% endif %}" href="/">総合監視</a></li>
-                <li class="nav-item"><a class="nav-link {% if current_route == 'chemical' %}active{% endif %}" href="/chemical">化学メーカー</a></li>
-                <li class="nav-item"><a class="nav-link {% if current_route == 'tire' %}active{% endif %}" href="/tire">タイヤ・ホース</a></li>
-            </ul>
+<nav class="navbar navbar-expand-lg">
+    <div class="container">
+        <a class="navbar-brand" href="/">HORMUZ INTELLIGENCE</a>
+        <div class="ms-auto text-muted small d-none d-md-block">
+            研究開発の視点で読み解く、エネルギー情勢のキュレーション
         </div>
     </div>
 </nav>
 
-<div class="container-fluid">
-    <div class="row main-row">
-        
-        <div class="col-lg-8 news-section">
-            <h5 class="fw-bold mb-4 d-flex align-items-center">
-                📡 {{ title }}
-                <span class="ms-3 badge bg-danger badge-live">AUTO-UPDATE ON</span>
-            </h5>
-            {% if news %}
-                {% for item in news %}
-                <div class="card shadow-sm">
-                    <div class="card-body py-3">
-                        <div class="d-flex justify-content-between mb-1">
-                            <span class="news-date">📅 {{ item.published_at.strftime('%m/%d %H:%M') }}</span>
-                            {% if item.is_translated %}
-                                <span class="badge bg-light text-primary border border-primary" style="font-size: 0.7rem;">AI翻訳</span>
-                            {% endif %}
-                        </div>
-                        <h6 class="card-title mb-2">
-                            <a href="{{ item.url }}" target="_blank" class="text-decoration-none text-dark fw-bold" style="line-height: 1.5; font-size: 1.05rem;">
-                                {{ item.title }}
-                            </a>
-                        </h6>
-                        <div class="text-end">
-                            <a href="{{ item.url }}" target="_blank" class="btn btn-sm text-primary p-0">詳細を確認 ❯</a>
-                        </div>
-                    </div>
-                </div>
-                {% endfor %}
-            {% else %}
-                <div class="alert alert-light">ニュースを取得中です...</div>
-            {% endif %}
+<div class="container">
+    <div class="hero-section text-center">
+        <p class="news-category">Current Status</p>
+        <h1 class="hero-title">ホルムズ海峡・エネルギー概況</h1>
+        <p class="lead text-muted mx-auto" style="max-width: 700px;">
+            ゴム材料エンジニアの視点で厳選した、今週の物流リスクとナフサ市場動向。
+        </p>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <h4 class="fw-bold mb-4">📺 今週の注目解説</h4>
+            <div class="video-container shadow-sm">
+                <iframe src="https://www.youtube.com/embed/r2Do5g2QzXk" frameborder="0" allowfullscreen></iframe>
+            </div>
+
+            <h4 class="fw-bold mb-4 mt-5">📰 最新トピック</h4>
+            {% for item in main_news %}
+            <div class="news-card">
+                <span class="news-category">Strategic News</span>
+                <div class="text-muted small mb-2">{{ item.published_at.strftime('%Y年%m月%d日') }}</div>
+                <a href="{{ item.url }}" target="_blank" class="news-title d-block">
+                    {{ item.title }}
+                </a>
+                <p class="text-muted small mt-2">自動取得した情勢ニュース。詳細はソース元でご確認ください。</p>
+            </div>
+            {% endfor %}
         </div>
 
-        <div class="col-lg-4 tool-section">
-            
-            <div class="widget-box">
-                <h6 class="fw-bold mb-3">📈 原油・ナフサ指標 (WTI)</h6>
-                <div class="tradingview-widget-container" style="height:220px;">
-                    <div id="tradingview_chart" style="height:100%;"></div>
-                    <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-                    <script type="text/javascript">
-                    new TradingView.widget({
-                        "autosize": true,
-                        "symbol": "TVC:USOIL",
-                        "interval": "D",
-                        "theme": "light",
-                        "style": "2",
-                        "locale": "ja",
-                        "hide_top_toolbar": true,
-                        "container_id": "tradingview_chart"
-                    });
-                    </script>
-                </div>
+        <div class="col-lg-4">
+            <div class="side-widget shadow-sm">
+                <h6 class="fw-bold mb-3">📈 Market: WTI Crude</h6>
+                <div id="tv-chart" style="height: 200px;"></div>
+                <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+                <script type="text/javascript">
+                new TradingView.widget({
+                    "autosize": true, "symbol": "TVC:USOIL", "interval": "D",
+                    "theme": "light", "style": "2", "container_id": "tv-chart", "locale": "ja"
+                });
+                </script>
             </div>
 
-            <div class="widget-box">
-                <h6 class="fw-bold mb-3 d-flex justify-content-between">
-                    <span>🛳️ ライブ船舶交通（タンカー限定）</span>
-                    <span class="badge bg-primary" style="font-size: 0.6rem;">Tankers Only</span>
-                </h6>
-                <div style="width: 100%; height: 350px; overflow: hidden; border-radius: 8px;">
-                    <iframe width="100%" height="350" frameborder="0" scrolling="no" marginheight="0" marginwidth="0" 
-                            src="https://www.marinetraffic.com/en/ais/embed/zoom:8/centery:26.5/centerx:56.2/maptype:4/shownames:false/mmsi:0/shipid:0/fleet:/fleet_id:/vtypes:8/show_menu:true/remember:false/show_legend:true/hide_coords:false/show_trace:false/disable_info_window:false">
-                    </iframe>
-                </div>
-                <p class="text-muted small mt-2 mb-0">※赤色またはオレンジのアイコンがタンカーです。</p>
+            <div class="side-widget shadow-sm">
+                <h6 class="fw-bold mb-3">🛳️ Live Tanker Map</h6>
+                <iframe width="100%" height="250" frameborder="0" src="https://www.marinetraffic.com/en/ais/embed/zoom:7/centery:26.5/centerx:56.2/maptype:4/vtypes:8"></iframe>
             </div>
-
-            <div class="widget-box">
-                <h6 class="fw-bold mb-3 text-secondary">🔍 過去ログ検索</h6>
-                <form method="GET" action="">
-                    <div class="input-group mb-2">
-                        <input type="date" name="date" class="form-control form-control-sm" value="{{ request.args.get('date', '') }}">
-                        <button type="submit" class="btn btn-sm btn-dark">検索</button>
-                    </div>
-                    {% if request.args.get('date') %}
-                        <a href="{{ request.path }}" class="btn btn-link btn-sm p-0 text-secondary text-decoration-none">リセット</a>
-                    {% endif %}
-                </form>
-            </div>
-            
         </div>
     </div>
 </div>
