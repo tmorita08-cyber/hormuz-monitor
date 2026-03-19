@@ -4,3 +4,4 @@ APScheduler
 feedparser
 deep-translator
 gunicorn
+Youtube-python
