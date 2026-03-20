@@ -6,17 +6,13 @@ import feedparser
 from deep_translator import GoogleTranslator
 from datetime import datetime
 import threading
-import sys
 
-# 1. アプリ本体の作成
 app = Flask(__name__)
 
-# 2. データベース設定
+# --- データベース設定 ---
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'news.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# 3. SQLAlchemyの初期化
 db = SQLAlchemy(app)
 
 # --- データベースモデル ---
@@ -40,7 +36,7 @@ def fetch_and_save_data():
         # 1. YouTube更新
         try:
             from youtubesearchpython import VideosSearch
-            print("Searching YouTube for 'ホルムズ海峡 情勢 解説'...")
+            print("Searching YouTube...")
             search = VideosSearch('ホルムズ海峡 情勢 解説', limit=5)
             result = search.result()
             
@@ -53,7 +49,7 @@ def fetch_and_save_data():
                         break
                 
                 if found_vid:
-                    print(f"SUCCESS: Found Video -> {found_title} ({found_vid})")
+                    print(f"SUCCESS: Found Video -> {found_vid}")
                     record = Video.query.first()
                     if not record:
                         db.session.add(Video(video_id=found_vid, title=found_title))
@@ -61,14 +57,10 @@ def fetch_and_save_data():
                         record.video_id = found_vid
                         record.title = found_title
                     db.session.commit()
-                else:
-                    print("WARNING: No video type found in search results.")
-            else:
-                print("ERROR: YouTube Search returned no result key.")
         except Exception as e:
-            print(f"YouTube Update Critical Error: {e}")
+            print(f"YouTube Error: {e}")
 
-        # 2. ニュース更新（消えていたカテゴリ分類を復活！）
+        # 2. ニュース更新（二重登録バグを修正）
         try:
             urls = {
                 'main': 'https://news.google.com/rss/search?q=Hormuz+Strait+oil+shipping&hl=en-US&gl=US&ceid=US:en',
@@ -82,38 +74,38 @@ def fetch_and_save_data():
                     if not News.query.filter_by(url=entry.link).first():
                         t_title = translator.translate(entry.title)
                         
-                        # キーワードによる材料系カテゴリの自動分類
+                        # カテゴリの自動判定
                         final_cat = base_cat
                         if any(kw in t_title for kw in ['ゴム', 'ホース', 'NBR', 'HNBR', 'タイヤ']):
                             final_cat = 'tire'
                         elif any(kw in t_title for kw in ['化学', 'プラント', 'ナフサ']):
                             final_cat = 'chemical'
                         
+                        # 1回だけ保存
                         db.session.add(News(title=t_title, url=entry.link, category=final_cat, is_translated=True))
             db.session.commit()
             print("News Update Completed.")
         except Exception as e:
-            print(f"News Update Error: {e}")
+            print(f"News Error: {e}")
     print("--- Data Update Finished ---")
 
 # --- 初期化 ---
 with app.app_context():
     db.create_all()
 
-# スケジュール設定
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=fetch_and_save_data, trigger="interval", hours=1)
 scheduler.start()
 
-# 初回データをバックグラウンドで取得
+# 起動直後に実行
 threading.Thread(target=fetch_and_save_data).start()
 
-# --- ルーティング（消えていたページを復活！） ---
+# --- ルーティング ---
 @app.route('/')
 def index():
     all_news = News.query.order_by(News.published_at.desc()).limit(15).all()
     video = Video.query.first()
-    v_id = video.video_id if video else "r2Do5g2QzXk" # 見つからない時のデフォルト
+    v_id = video.video_id if video else "r2Do5g2QzXk"
     return render_template('index.html', main_news=all_news, video_id=v_id, title="総合概況")
 
 @app.route('/chemical')
