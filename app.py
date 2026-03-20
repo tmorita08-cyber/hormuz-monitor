@@ -8,12 +8,15 @@ from datetime import datetime
 import threading
 import sys
 
+# 1. アプリ本体の作成
 app = Flask(__name__)
 
-# データベース設定
+# 2. データベース設定
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'news.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+
+# 3. SQLAlchemyの初期化
 db = SQLAlchemy(app)
 
 # --- データベースモデル ---
@@ -30,7 +33,7 @@ class Video(db.Model):
     video_id = db.Column(db.String(50), nullable=False)
     title = db.Column(db.String(200))
 
-# --- データ取得ロジック ---
+# --- データ取得・自動分類ロジック ---
 def fetch_and_save_data():
     print("--- Data Update Started ---")
     with app.app_context():
@@ -38,7 +41,6 @@ def fetch_and_save_data():
         try:
             from youtubesearchpython import VideosSearch
             print("Searching YouTube for 'ホルムズ海峡 情勢 解説'...")
-            # 念のため5件取得して、動画タイプを精査
             search = VideosSearch('ホルムズ海峡 情勢 解説', limit=5)
             result = search.result()
             
@@ -66,16 +68,28 @@ def fetch_and_save_data():
         except Exception as e:
             print(f"YouTube Update Critical Error: {e}")
 
-        # 2. ニュース更新 (前回同様)
+        # 2. ニュース更新（消えていたカテゴリ分類を復活！）
         try:
-            urls = {'main': 'https://news.google.com/rss/search?q=Hormuz+Strait+oil+shipping&hl=en-US&gl=US&ceid=US:en'}
+            urls = {
+                'main': 'https://news.google.com/rss/search?q=Hormuz+Strait+oil+shipping&hl=en-US&gl=US&ceid=US:en',
+                'market': 'https://news.google.com/rss/search?q=Naphtha+price+market&hl=en-US&gl=US&ceid=US:en'
+            }
             translator = GoogleTranslator(source='en', target='ja')
+            
             for base_cat, rss_url in urls.items():
                 feed = feedparser.parse(rss_url)
                 for entry in feed.entries[:3]:
                     if not News.query.filter_by(url=entry.link).first():
                         t_title = translator.translate(entry.title)
-                        db.session.add(News(title=t_title, url=entry.link, category=base_cat, is_translated=True))
+                        
+                        # キーワードによる材料系カテゴリの自動分類
+                        final_cat = base_cat
+                        if any(kw in t_title for kw in ['ゴム', 'ホース', 'NBR', 'HNBR', 'タイヤ']):
+                            final_cat = 'tire'
+                        elif any(kw in t_title for kw in ['化学', 'プラント', 'ナフサ']):
+                            final_cat = 'chemical'
+                        
+                        db.session.add(News(title=t_title, url=entry.link, category=final_cat, is_translated=True))
             db.session.commit()
             print("News Update Completed.")
         except Exception as e:
@@ -86,19 +100,35 @@ def fetch_and_save_data():
 with app.app_context():
     db.create_all()
 
+# スケジュール設定
 scheduler = BackgroundScheduler()
 scheduler.add_job(func=fetch_and_save_data, trigger="interval", hours=1)
 scheduler.start()
 
-# 起動直後に別スレッドで実行
+# 初回データをバックグラウンドで取得
 threading.Thread(target=fetch_and_save_data).start()
 
+# --- ルーティング（消えていたページを復活！） ---
 @app.route('/')
 def index():
     all_news = News.query.order_by(News.published_at.desc()).limit(15).all()
     video = Video.query.first()
     v_id = video.video_id if video else "r2Do5g2QzXk" # 見つからない時のデフォルト
-    return render_template('index.html', main_news=all_news, video_id=v_id)
+    return render_template('index.html', main_news=all_news, video_id=v_id, title="総合概況")
+
+@app.route('/chemical')
+def chemical():
+    news = News.query.filter_by(category='chemical').order_by(News.published_at.desc()).all()
+    video = Video.query.first()
+    v_id = video.video_id if video else "r2Do5g2QzXk"
+    return render_template('index.html', main_news=news, title="化学メーカー関連", video_id=v_id)
+
+@app.route('/tire')
+def tire():
+    news = News.query.filter_by(category='tire').order_by(News.published_at.desc()).all()
+    video = Video.query.first()
+    v_id = video.video_id if video else "r2Do5g2QzXk"
+    return render_template('index.html', main_news=news, title="タイヤ・ホース関連", video_id=v_id)
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
